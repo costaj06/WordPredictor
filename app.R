@@ -18,7 +18,7 @@ ui <- fluidPage(
   #print out session info
 #  verbatimTextOutput(outputId = "session_info"),
 h3('Try it out!  Demo the new Typing Assistant widget that you can insert in your own app!'),
-h3('Enter text in the box below and click on word suggestion buttons to add words to your text.'),
+h4('Enter text in the box below and click on word suggestion buttons to add words to your text.'),
 
 div(style="display:inline-block",textInput(inputId = "phrase", label = "Enter text", "Enter your text here")),
 div(style="display:inline-block",uiOutput("ResetButton")),
@@ -27,7 +27,8 @@ div(style="display:inline-block",uiOutput("ResetButton")),
   #    mainPanel(
 #  h3('The text you entered is:'),
 #  textOutput(outputId = "inputphrase"),
-  h3('Click on a word to append it to your input.'),
+  h4('Click on a word to append it to your input.'),
+  h5('(Note: Buttons are ordered Most Probable Word on left to Less Probable Word on Right)'),
   textOutput(outputId = "predictedWord"),
   div(style="display:inline-block",uiOutput("button1")),
   div(style="display:inline-block",uiOutput("button2")),
@@ -38,31 +39,13 @@ div(style="display:inline-block",uiOutput("ResetButton")),
 )
 
 
-# Server
-
-#server <- function(input, output){
-#setwd("C:\\Users\\jcosta\\Dropbox\\DataScience\\Capstone\\WordPredictorShinyApp\\WordPredictor")
-
-
-#monograms <- readRDS(".\\Data\\monograms")
-#bigrams <- readRDS(".\\Data\\bigrams")
-#trigrams <- readRDS(".\\Data\\trigrams")
-#quadgrams <- readRDS(".\\Data\\quadgrams")
-
 monograms <- readRDS("monograms")
 bigrams <- readRDS("bigrams")
 trigrams <- readRDS("trigrams")
 quadgrams <- readRDS("quadgrams")
 
-#monograms <- readRDS(".\\monograms")
-#bigrams <- readRDS(".\\bigrams")
-#trigrams <- readRDS(".\\trigrams")
-#quadgrams <- readRDS(".\\quadgrams")
-
 # predictNextWord takes as an input a string of words, the monograms, bigrams, trigrams, and quadgrams dataframes, and returns?
 predictNextWord <- function(inputstring, monograms, bigrams, trigrams, quadgrams) {
-  #enter debug mode
-  #  browser()
   #inputstring is strings of words - split into first, second, etc
   inputstring <- as.character(inputstring)
   tokenedWords <- strsplit(inputstring, " ")
@@ -152,8 +135,11 @@ predictNextWord <- function(inputstring, monograms, bigrams, trigrams, quadgrams
   #Sort final candidates by weighted probabilities
   candidates <- candidates[order(-candidates$WP), ]
   
+  #get rid of duplicates
+  candidates <- candidates[, 2]
+  candidates <- unique(candidates)
   #return most likely candidate (highest weighted probability)
-  return(candidates[, 2])
+  return(candidates)
 }
 
 # Define server logic required to draw a histogram
@@ -161,17 +147,6 @@ server <- function(input, output, session) {
   observe({
     
     
-    #Session info
-#  output$session_info <- renderPrint({ 
-#    cat(paste("Session ID: ",Sys.getpid()," \n"))
-#  })
-#  sessionID <- Sys.getpid()
-  
-#  output$inputphrase <- renderText(input$phrase)
-  #   currentInput <- input$phrase
-  
-#  output$predictedWord <- renderPrint({predictNextWord(input$phrase, monograms, bigrams, trigrams, quadgrams)}[1])
-  
   #make dynamic reset button
   output$ResetButton <- renderUI({
     actionButton("B0", label = "Clear Input")
@@ -202,17 +177,7 @@ server <- function(input, output, session) {
     actionButton("B5", label = button5_label)
   })
 
-  #    output$button1 <- predictNextWord(input$phrase, monograms, bigrams, trigrams, quadgrams)[1]
-  #    output$button2 <- predictNextWord(input$phrase, monograms, bigrams, trigrams, quadgrams)[2]
-  
-  #label1 <- predictNextWord(input$phrase, monograms, bigrams, trigrams, quadgrams)[1]
-  #label2 <- predictNextWord(input$phrase, monograms, bigrams, trigrams, quadgrams)[2]
-  #label3 <- predictNextWord(input$phrase, monograms, bigrams, trigrams, quadgrams)[3]
-  #output$my_button1 <- renderUI({actionButton("action1", label = label1)})
-  #output$my_button2 <- renderUI({actionButton("action1", label = label1)})
-  #output$my_button3 <- renderUI({actionButton("action1", label = label1)})
-  
-  
+
   observeEvent(input$B0, {
     updateTextInput(session, "phrase", value = "")
   })
