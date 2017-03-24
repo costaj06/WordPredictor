@@ -1,0 +1,286 @@
+---
+title: "Data Science Capstone Project - Week 2 Exploratory Analysis"
+author: "Jessica Costa"
+date: "August 22, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Abstract
+
+This paper describes a preliminary approach to the Johns Hopkins University Data Science Capstone project.  The goal of the Capstone project is to generate an interactive product that takes an ordered series of words as input and predicts and outputs the next word in the series.  Given an initial corpus of text data, taken from a set of blogs, news articles, and twitter data feeds, the instructions for the project are to use principles and techniques from the fields of text mining, natural language processing, statistics, and data science to build a model to predict a next word in an ordered series of words, and to build a product in a Shiny app that incorporates the predictive model. Included in this paper are the approaches to basic data cleaning, exploratory data analysis, and initial prediction model ideas and considerations.  
+
+## Data Loading and Cleaning
+
+The first step, of course, is to load the data into an appropriate data structure in R, and then to clean the data to remove unwanted symbols, extra spacing, punctuation, etc.  To perform this step, the text mining package in R, called "tm", provides much of the useful functionality used in achieving this step.  In particular, the data files are loaded into a data structure using the "corpus" function.  While the "tm" package does include functions for cleaning the data, including functions for removing punctuation, multiple/trailing spaces, etc., I have found through experimentation that loading the files using the R readLines function, and then cleaning them using the R gsub function, performs much faster than using the "tm" cleaning functions.  Therefore, I begin converting each text file to an R vector structure, and then use various gsub functions to clean the text so as to only include words.  Following this, I store the cleaned files out to a directory, and load the files back in using the Corpus tm function.  (It may sound like extra work, but in fact it appears to be much faster for later generating document term matrices, which are needed for extracting ngrams.)
+```{r message=FALSE, warning=FALSE}
+#Make sure libraries are loaded
+if (!require(devtools)) install.packages("devtools", dependencies = TRUE)
+library(devtools)
+# devtools packaged required to install readtext from Github 
+devtools::install_github("kbenoit/readtext")
+library(kbenoit/readtext)
+if (!require(reshape2)) install.packages(reshape2, dependencies = TRUE)
+library(reshape2)
+#install.packages("tm")
+if (!require(tm)) install.packages(tm, dependencies = TRUE)
+library(tm)
+#install.packages("RWeka")
+if (!require(RWeka)) install.packages(RWeka, dependencies = TRUE)
+library(RWeka)
+#install.packages("ggplot2")
+if (!require(ggplot2)) install.packages(ggplot2, dependencies = TRUE)
+library(ggplot2)
+#install.packages("wordcloud")
+if (!require(wordcloud)) install.packages(wordcloud, dependencies = TRUE)
+library(wordcloud)
+if (!require(quanteda)) install.packages(quanteda, dependencies = TRUE)
+library(quanteda)
+
+#Set file path names
+doc_blogs <- "C:\\Users\\jcosta\\Dropbox\\DataScience\\Capstone\\Dataset\\Uncompressed\\en_US.blogs.txt"
+doc_news <- "C:\\Users\\jcosta\\Dropbox\\DataScience\\Capstone\\Dataset\\Uncompressed\\en_US.news.txt"
+doc_twitter <- "C:\\Users\\jcosta\\Dropbox\\DataScience\\Capstone\\Dataset\\Uncompressed\\en_US.twitter.txt"
+
+#Clean the data before creating the corpus
+
+#Read data from file into vector data structure
+text2vector = function(filepath)  {
+  con = file(filepath, "r")
+  return(readLines(con, -1))
+}
+
+#Pull data from individual files into corresponding vector data structures
+blogsData <- text2vector(doc_blogs)
+newsData <- text2vector(doc_news)
+twitterData <- text2vector(doc_twitter)
+
+
+#function for cleaning data
+Text_To_Clean <- function(text_blob) {
+  # swap all sentence ends with code 'ootoo'
+  text_blob <- gsub(pattern=';|\\.|!|\\?', x=text_blob, replacement='ootoo')
+  
+  # swap all apostrophe's with code 'ooaoo'
+  text_blob <- gsub(pattern="\\'", x=text_blob, replacement='ooaoo')
+  
+  # remove all non-alpha text (numbers etc)
+  text_blob <- gsub(pattern="[^a-zA-Z]", x=text_blob, replacement = ' ')
+  
+  # force all characters to lower case
+  text_blob <- tolower(text_blob)
+  
+   #add apostrophes back in
+  text_blob <- gsub(pattern="ooaoo", x=text_blob, replacement="'")
+  
+  # remove contiguous spaces
+  text_blob <- gsub(pattern="\\s+", x=text_blob, replacement=' ')
+  
+  # split sentences by split code
+  sentence_vector <- unlist(strsplit(x=text_blob, split='ootoo',fixed = TRUE))
+  
+  return (sentence_vector)
+}
+
+corpus_blogs <- Text_To_Clean(blogsData)
+corpus_news <- Text_To_Clean(newsData)
+corpus_twitter <- Text_To_Clean(twitterData)
+
+#Save for future use
+saveRDS(corpus_blogs, file="C:\\Users\\jcosta\\Dropbox\\DataScience\\Capstone\\Dataset\\Clean\\blogs.txt")
+saveRDS(corpus_news, file="C:\\Users\\jcosta\\Dropbox\\DataScience\\Capstone\\Dataset\\Clean\\news.txt")
+saveRDS(corpus_twitter, file="C:\\Users\\jcosta\\Dropbox\\DataScience\\Capstone\\Dataset\\Clean\\twitter.txt")
+
+#create corpus from saved clean files
+docs <- Corpus(DirSource("C:\\Users\\jcosta\\Dropbox\\DataScience\\Capstone\\Dataset\\Clean"))
+```
+
+## Exploratory Data Analysis
+
+### Preliminary Stats
+
+Looking first at the individual source files (e.g., blogs, news, twitter), one can first note the size of the files, and numbers of lines in each file. 
+```{r message=FALSE, warning=FALSE}
+#Preliminary Stats of individual data files
+
+#function to count the number of lines in the file
+LinesInFile = function(filepath) {
+  con = file(filepath, "r")
+  numlines <- 0
+  while ( TRUE ) {
+    line = readLines(con, n = 1)
+    if ( length(line) == 0 ) {
+      break
+    }
+    numlines <- numlines+1
+  }
+  close(con)
+  return(numlines)
+}
+
+blogsLines <- LinesInFile(doc_blogs)
+newsLines <- LinesInFile(doc_news)
+twitterLines <- LinesInFile(doc_twitter)
+
+print(paste("The file 'en_US.blogs.txt' is 205,235 Mbytes long and contains", as.character(blogsLines), "lines.", sep=" "))
+      
+print(paste("The file 'en_US.news.txt' is 200,989 Mbytes long and contains", as.character(newsLines), "lines.", sep=" "))
+
+print(paste("The file 'en_US.twitter.txt' is 163,189 Mbytes long and contains", as.character(twitterLines), "lines.", sep=" "))
+    
+```
+It's also possible to use another package, quanteda, to extract summary statistics:
+```{r message=FALSE, warning=FALSE}
+#Make sure libraries are loaded
+if (!require(quanteda)) install.packages(quanteda, dependencies = TRUE)
+library(quanteda)
+
+#create corpus
+#textfiles <- textfile(file = "C:\\Users\\jcosta\\Dropbox\\DataScience\\Capstone\\Dataset\\Uncompressed\\*.txt")
+install.packages("readtext")
+library(readtext)
+textfiles <- readtext(file = "C:\\Users\\jcosta\\Dropbox\\DataScience\\Capstone\\Dataset\\Uncompressed\\*.txt")
+myCorpus <- corpus(textfiles)
+```
+```{r message=FALSE, warning=FALSE}
+#Preliminary Stats of individual data files
+summary(myCorpus)
+```
+The table above shows the Types (i.e., number of distinct "words" or "terms"), Tokens (i.e,. the total number of "words" or "terms"), and Sentences (i.e., unit of written language) on a per/document basis for the corpus.  
+
+
+### More In-Depth Data Exploration
+A Document Term Matrix can be used to derive more interesting and useful information about the corpus.  The "tm" package includes a function "dtm" for generating a document term matrix.  
+```{r message=FALSE, warning=FALSE}
+## DocumentTermMatrix does the tokenizing and forms a document term matrix
+dtm <- DocumentTermMatrix(docs) 
+```
+
+The summary information from the Document Term Matrix reveals some additional information:
+```{r message=FALSE, warning=FALSE}
+print(dtm)
+```
+As revealed, the document corpus is a 3 x 35057 dimension matrix in which 56% of the rows are zero.  The maximum length of any term in the matrix is 21 characters.  
+
+###Frequency of Words in Corpus
+
+The frequency of occurrence of each term in the corpus can be calculated by summing each column.
+```{r message=FALSE, warning=FALSE}
+freq_monograms <- colSums(as.matrix(dtm))
+```
+The top 20 most occuring terms are:
+```{r message=FALSE, warning=FALSE}
+freq_monograms<-sort(freq_monograms, decreasing=TRUE)
+head(freq_monograms, 20)
+
+monograms <- data.frame(word=names(freq_monograms), freq=freq_monograms)
+```
+A more visual presentation of the most frequent words in the corpus is shown in a bargram and a wordcloud:
+```{r message=FALSE, warning=FALSE}
+#plotting theme
+mytheme <- theme(plot.title=element_text(face="bold", size="14", color="darkblue"),
+                 axis.title=element_text(face="bold", size=10, color="black"),  
+                 axis.text=element_text(size=9, color="darkblue"), 
+                 axis.text.x=element_text(angle=45, hjust = 1),
+                 legend.position="top"
+)
+
+ggplot(monograms[1:20,], aes(word, freq)) + geom_bar(stat = "identity", fill="magenta") + mytheme + ggtitle("Frequency of Single Words (Monograms) in Document Corpus")
+
+## Display a wordcloud
+wordcloud(names(freq_monograms), freq_monograms, max.words=200, colors=brewer.pal(8, "Dark2"), rot.per=0.3)
+```
+
+
+## Predictive Model Ideas
+
+Given the initial exploratory analysis, the next step is to build a predictive model that takes as input an ordered series of words and predicts the next word in the series.  
+
+### Idea 1 - Calculate probabilites of next words based on frequency of observed input ngrams
+One potential model for predicting the next word in an ordered series of words is to collect the frequencies of n-grams (n from 1 to 4 or 5) found in the corpus, and calculate probabilities of the n-grams calculated in the Exploratory Data Analysis section.  Then, given an ordered series of n-1 words, we can calculate the probabilites of various next words given the apriori knowledge of the frequencies for various ngrams.  
+
+To implement this model, is is necessary to build a set of n-grams (n = 2, 3, 4 or more) and calculate the frequencies of each ngram.
+The bi-, tri-, quad- and quant-grams can be generated using the tokenizer function of the tm package called NGramTokenizer. 
+
+```{r message=FALSE, warning=FALSE}
+BigramTokenizer<-function(x) NGramTokenizer(x, Weka_control(min=2, max=2))
+dtm_bigrams<-DocumentTermMatrix(docs, control=list(tokenize=BigramTokenizer))
+print(dtm_bigrams)
+
+TrigramTokenizer<-function(x) NGramTokenizer(x, Weka_control(min=3, max=3))
+dtm_trigrams<-DocumentTermMatrix(docs, control=list(tokenize=TrigramTokenizer))
+print(dtm_trigrams)
+
+quadgramTokenizer<-function(x) NGramTokenizer(x, Weka_control(min=4, max=4))
+dtm_quadgrams<-DocumentTermMatrix(docs, control=list(tokenize=quadgramTokenizer))
+print(dtm_quadgrams)
+```
+Looking at the summary statistics of the document term matrices for the bi-, tri-, quad- and quant-grams, we observe that the while the number of terms reduces (due to the merging of words into a single term) as n increases (i.e., there are 123259 unique bigrams, 103686 unique trigrams, and only 68795 unique quadgrams), the sparsity of the resulting Document Term Matrices remains nearly equal at around 64 to 66%.  
+
+
+####Bigrams
+
+The most frequent bigrams in our corpus are illustrated below.  NOTE: In this implementation contractions (i.e., two words contracted into a single word which contains an apostrophe) are counted as two words.  The tokenizer automatically removes the apostrophe and counts contractions as two words, which makes sense since the contraction is in fact two words contracted into a single word.  If one prefers to count the contraction as a single word, it is possible to tokenize the contractions as a single word, give more coding effort.
+
+```{r message=FALSE, warning=FALSE}
+##Plot Bigram Frequencies
+freq_bigrams <-sort(colSums(as.matrix(dtm_bigrams)), decreasing=TRUE)
+head(freq_bigrams, 20)
+
+bigrams <-data.frame(word=names(freq_bigrams), freq=freq_bigrams)
+
+ggplot(bigrams[1:20,], aes(word, freq)) + geom_bar(stat = "identity", fill="magenta") + mytheme + ggtitle("Frequency of Bigrams in Document Corpus")
+
+## Display a wordcloud
+wordcloud(names(freq_bigrams), freq_bigrams, max.words=60, colors=brewer.pal(8, "Dark2"), rot.per=0.3)
+```
+
+####Trigrams
+
+The most frequent trigrams in our corpus are illustrated below (noting the above NOTE relating to counting contractions as 2 words):
+
+```{r message=FALSE, warning=FALSE}
+##Plot Trigrams Frequencies
+freq_trigrams <- sort(colSums(as.matrix(dtm_trigrams)), decreasing=TRUE)
+head(freq_trigrams, 20)
+
+trigrams <- data.frame(word=names(freq_trigrams), freq=freq_trigrams)
+
+ggplot(trigrams[1:20,], aes(word, freq)) + geom_bar(stat = "identity", fill="magenta") + mytheme + ggtitle("Frequency of Trigrams in Document Corpus")
+
+## Display a wordcloud
+wordcloud(names(freq_trigrams), freq_trigrams, max.words=30, colors=brewer.pal(8, "Dark2"), rot.per=0.3)
+```
+
+####Quadgrams
+
+The most frequent quadgrams in our corpus are illustrated below (noting the above NOTE relating to counting contractions as 2 words):
+
+```{r message=FALSE, warning=FALSE}
+##Plot Quadgrams Frequencies
+freq_quadgrams <- sort(colSums(as.matrix(dtm_quadgrams)), decreasing=TRUE)
+head(freq_quadgrams, 12)
+
+quadgrams <- data.frame(word=names(freq_quadgrams), freq=freq_quadgrams)
+
+ggplot(quadgrams[1:20,], aes(word, freq)) + geom_bar(stat = "identity", fill="magenta") + mytheme + ggtitle("Frequency of Quadgrams in Document Corpus")
+
+## Display a wordcloud
+wordcloud(names(freq_quadgrams), freq_quadgrams, max.words=20, colors=brewer.pal(8, "Dark2"), rot.per=0.3)
+
+```
+
+### Idea 2
+Another way to predict the next work in an ordered series of words is to build a probability tree, and once the tree is built, simply traverse the tree to the most probable leaf node, and if no word exists, return the most frequent word in the database.
+
+
+## Ideas for Fine Tuning the Model 
+
+During my initial research into text mining, I read somewhere that there is a package that takes into account the sentence structure and grammar.  This is a possibility for use in improving the performance of the prediction - that is, by understanding the sentence structure of the input, one can possibly increase the weighting of words from the prediction pool that meet the expected next word type (e.g., noun, verb, adjective, article, etc.).
+
+One question of interest is how much effect does the inclusion or removal of the end of line markers in the initial data cleaning have on the accuracy of the model?  In theory, inclusion of the end of line markers would result in a more accurate model, since theoretically the way sentences flow together do not have the same predictability as the way words flow together in a sentence.  
+
+Finally, increasing the variety and quantity of the sources of the corpus should as well improve the quality of the prediction function.  

@@ -1,0 +1,37 @@
+---
+title: "DataScienceCapstoneProjectExploratoryDataAnalysis.V2"
+author: "Jessica Costa"
+date: "August 25, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Abstract
+
+This paper describes a preliminary approach to the Johns Hopkins University Data Science Capstone project.  The goal of the Capstone project is to generate an interactive product that takes an ordered series of words as input and predicts and outputs the next word in the series.  Given an initial corpus of text data, taken from a set of blogs, news articles, and twitter data feeds, the instructions for the project are to use principles and techniques from the fields of text mining, natural language processing, statistics, and data science to build a model to predict a next word in an ordered series of words, and to build a product in a Shiny app that incorporates the predictive model. Included in this paper are the approaches to basic data cleaning, exploratory data analysis, and initial prediction model ideas and considerations.  
+
+## Data Loading and Cleaning
+
+The first step, of course, is to load the data into an appropriate data structure in R, and then to clean the data to remove unwanted symbols, extra spacing, punctuation, etc.  I initially used the text mining "tm" package in R to accomplish this, but found certain functions (e.g., dtm) to take so long it seemed to hang up R.  During this first path, I found that the performance of the 'dtm' function significantly improved when I first cleaned the data by reading the data into a character vector, removing all control characters and writing it back out to a "clean" version of the text files.  After "cleaning" the text files in this way, I was able to use the 'corpus' command from the 'tm' package to read in the data, and then use the 'dtm' command from the 'tm' package to create the document term matrix for the corpus.  I continued down this path to extract term frequencies, and bigram, trigram and quadgram frequencies.  However, at the last minute, prior to turning in this report, I noted that one of the requests for the report was to report on the number of terms in each individual file.  I had not done this, and during my research as to how to extract the number of terms on an individual document basis, I discovered the "quanteda" package, created by Ken Benoit and Paul Nulty, which is available from carn.r-project.org.  I have since switched to using the "quanteda" package, since it seems to provide more of the functionality I need for this text mining project.  For example, the 'summary' command generates a table containing interesting information on a document by document basis, including the name of the file, the number of different types of characters, the number of tokens/terms/words, and the number of sentences/lines in the file.  To perform this step, the text mining package in R, called "tm", provides much of the useful functionality used in achieving this step.  In particular, the data files are loaded into a data structure using the "corpus" function.  While the "tm" package does include functions for cleaning the data, including functions for removing punctuation, multiple/trailing spaces, etc., I have found through experimentation that loading the files using the R readLines function, and then cleaning them using the R gsub function, performs much faster than using the "tm" cleaning functions.  Therefore, I begin converting each text file to an R vector structure, and then use various gsub functions to clean the text so as to only include words.  Following this, I store the cleaned files out to a directory, and load the files back in using the Corpus tm function.  (It may sound like extra work, but in fact it appears to be much faster for later generating document term matrices, which are needed for extracting ngrams.)
+```{r message=FALSE, warning=FALSE}
+#Make sure libraries are loaded
+if (!require(quanteda)) install.packages(quanteda, dependencies = TRUE)
+library(quanteda)
+
+#create corpus
+textfiles <- textfile(file = "C:\\Users\\jcosta\\Dropbox\\Data Science\\Capstone\\Dataset\\Uncompressed\\*.txt")
+myCorpus <- corpus(textfiles)
+```
+## Exploratory Data Analysis
+
+### Preliminary Stats
+
+Looking first at the individual source files (e.g., blogs, news, twitter), one can first note the size of the files, and numbers of lines in each file. 
+```{r message=FALSE, warning=FALSE}
+#Preliminary Stats of individual data files
+summary(myCorpus)
+```
+The table above shows the Types (i.e., number of distinct "words" or "terms"), Tokens (i.e,. the total number of "words" or "terms"), and Sentences (i.e., unit of written language) on a per/document basis for the corpus.  
